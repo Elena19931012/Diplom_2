@@ -1,15 +1,16 @@
 package com.stellarburgers;
 
-import com.stellarburgers.client.ApiClient;
+import com.stellarburgers.api.UserApi;
 import com.stellarburgers.models.User;
 import com.stellarburgers.utils.TestDataGenerator;
+import io.qameta.allure.Description;
 import io.qameta.allure.Step;
 import io.qameta.allure.junit4.DisplayName;
 import io.restassured.response.Response;
 import org.junit.After;
 import org.junit.Test;
 
-import static io.restassured.RestAssured.given;
+import static org.apache.http.HttpStatus.*;
 import static org.hamcrest.Matchers.*;
 
 public class UserRegistrationTest {
@@ -18,10 +19,11 @@ public class UserRegistrationTest {
     
     @Test
     @DisplayName("Register a unique user")
+    @Description("Тест проверяет, что новый пользователь может быть успешно зарегистрирован с действительными учетными данными и получает правильные токены аутентификации")
     public void testRegisterUniqueUser() {
         User user = TestDataGenerator.generateUniqueUser();
         
-        Response response = createUser(user);
+        Response response = UserApi.createUser(user);
         
         checkSuccessfulRegistration(response);
         extractAccessToken(response);
@@ -29,61 +31,55 @@ public class UserRegistrationTest {
     
     @Test
     @DisplayName("Register a user that already exists")
+    @Description("Тест проверяет, что попытка регистрации пользователя с уже существующим адресом электронной почты возвращает соответствующую ошибку")
     public void testRegisterExistingUser() {
         User user = TestDataGenerator.generateUniqueUser();
         
-        // Create user first time
-        Response firstResponse = createUser(user);
+        Response firstResponse = UserApi.createUser(user);
         extractAccessToken(firstResponse);
         
-        // Try to create the same user again
-        Response secondResponse = createUser(user);
+        Response secondResponse = UserApi.createUser(user);
         
         checkUserAlreadyExistsError(secondResponse);
     }
     
     @Test
     @DisplayName("Register a user with missing email")
+    @Description("Тест проверяет, что попытка регистрации пользователя без указания адреса электронной почты возвращает ошибку валидации")
     public void testRegisterUserWithMissingEmail() {
         User user = TestDataGenerator.generateUserWithMissingEmail();
         
-        Response response = createUser(user);
+        Response response = UserApi.createUser(user);
         
         checkMissingFieldsError(response);
     }
     
     @Test
     @DisplayName("Register a user with missing password")
+    @Description("Тест проверяет, что попытка регистрации пользователя без указания пароля возвращает ошибку валидации")
     public void testRegisterUserWithMissingPassword() {
         User user = TestDataGenerator.generateUserWithMissingPassword();
         
-        Response response = createUser(user);
+        Response response = UserApi.createUser(user);
         
         checkMissingFieldsError(response);
     }
     
     @Test
     @DisplayName("Register a user with missing name")
+    @Description("Тест проверяет, что попытка регистрации пользователя без указания имени возвращает ошибку валидации")
     public void testRegisterUserWithMissingName() {
         User user = TestDataGenerator.generateUserWithMissingName();
         
-        Response response = createUser(user);
+        Response response = UserApi.createUser(user);
         
         checkMissingFieldsError(response);
     }
     
-    @Step("Create user")
-    private Response createUser(User user) {
-        return ApiClient.getRequestSpec()
-                .body(user)
-                .when()
-                .post("/auth/register");
-    }
-    
-    @Step("Check successful registration")
+    @Step("Проверка успешной регистрации")
     private void checkSuccessfulRegistration(Response response) {
         response.then()
-                .statusCode(200)
+                .statusCode(SC_OK)
                 .body("success", equalTo(true))
                 .body("user.email", notNullValue())
                 .body("user.name", notNullValue())
@@ -91,23 +87,23 @@ public class UserRegistrationTest {
                 .body("refreshToken", notNullValue());
     }
     
-    @Step("Check user already exists error")
+    @Step("Проверка ошибки существующего пользователя")
     private void checkUserAlreadyExistsError(Response response) {
         response.then()
-                .statusCode(403)
+                .statusCode(SC_FORBIDDEN)
                 .body("success", equalTo(false))
                 .body("message", equalTo("User already exists"));
     }
     
-    @Step("Check missing fields error")
+    @Step("Проверка ошибки отсутствия обязательных полей")
     private void checkMissingFieldsError(Response response) {
         response.then()
-                .statusCode(403)
+                .statusCode(SC_FORBIDDEN)
                 .body("success", equalTo(false))
                 .body("message", equalTo("Email, password and name are required fields"));
     }
     
-    @Step("Extract access token")
+    @Step("Извлечение токена доступа")
     private void extractAccessToken(Response response) {
         if (response.getStatusCode() == 200) {
             accessToken = response.jsonPath().getString("accessToken");
@@ -119,15 +115,11 @@ public class UserRegistrationTest {
         deleteUser();
     }
     
-    @Step("Delete user")
+    @Step("Удаление пользователя")
     private void deleteUser() {
         if (accessToken != null) {
-            given()
-                    .spec(ApiClient.getRequestSpecWithAuth(accessToken))
-                    .when()
-                    .delete("/auth/user")
-                    .then()
-                    .statusCode(anyOf(is(202), is(404)));
+            UserApi.deleteUser(accessToken).then()
+                   .statusCode(anyOf(is(SC_ACCEPTED), is(SC_NOT_FOUND)));
         }
     }
 }

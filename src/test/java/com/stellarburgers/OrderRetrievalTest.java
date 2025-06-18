@@ -1,8 +1,10 @@
 package com.stellarburgers;
 
-import com.stellarburgers.client.ApiClient;
+import com.stellarburgers.api.OrderApi;
+import com.stellarburgers.api.UserApi;
 import com.stellarburgers.models.User;
 import com.stellarburgers.utils.TestDataGenerator;
+import io.qameta.allure.Description;
 import io.qameta.allure.Step;
 import io.qameta.allure.junit4.DisplayName;
 import io.restassured.response.Response;
@@ -10,7 +12,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static io.restassured.RestAssured.given;
+import static org.apache.http.HttpStatus.*;
 import static org.hamcrest.Matchers.*;
 
 public class OrderRetrievalTest {
@@ -26,58 +28,42 @@ public class OrderRetrievalTest {
     
     @Test
     @DisplayName("Get orders for authorized user")
+    @Description("Тест проверяет, что авторизованный пользователь может успешно получить историю своих заказов со всеми ожидаемыми полями данных")
     public void testGetOrdersForAuthorizedUser() {
-        Response response = getOrdersWithAuth();
+        Response response = OrderApi.getOrders(accessToken);
         
         checkSuccessfulOrdersRetrieval(response);
     }
     
     @Test
     @DisplayName("Get orders for unauthorized user")
+    @Description("Тест проверяет, что попытка получить заказы без авторизации приводит к ошибке 401 с соответствующим сообщением об ошибке")
     public void testGetOrdersForUnauthorizedUser() {
-        Response response = getOrdersWithoutAuth();
+        Response response = OrderApi.getOrdersWithoutAuth();
         
         checkUnauthorizedError(response);
     }
     
-    @Step("Create test user")
+    @Step("Создание тестового пользователя")
     private void createTestUser() {
-        Response response = ApiClient.getRequestSpec()
-                .body(testUser)
-                .when()
-                .post("/auth/register");
-        
+        Response response = UserApi.createUser(testUser);
         accessToken = response.jsonPath().getString("accessToken");
     }
     
-    @Step("Get orders with authorization")
-    private Response getOrdersWithAuth() {
-        return ApiClient.getRequestSpecWithAuth(accessToken)
-                .when()
-                .get("/orders");
-    }
-    
-    @Step("Get orders without authorization")
-    private Response getOrdersWithoutAuth() {
-        return ApiClient.getRequestSpec()
-                .when()
-                .get("/orders");
-    }
-    
-    @Step("Check successful orders retrieval")
+    @Step("Проверка успешного получения заказов")
     private void checkSuccessfulOrdersRetrieval(Response response) {
         response.then()
-                .statusCode(200)
+                .statusCode(SC_OK)
                 .body("success", equalTo(true))
                 .body("orders", notNullValue())
                 .body("total", notNullValue())
                 .body("totalToday", notNullValue());
     }
     
-    @Step("Check unauthorized error")
+    @Step("Проверка ошибки неавторизованного доступа")
     private void checkUnauthorizedError(Response response) {
         response.then()
-                .statusCode(401)
+                .statusCode(SC_UNAUTHORIZED)
                 .body("success", equalTo(false))
                 .body("message", equalTo("You should be authorised"));
     }
@@ -87,15 +73,11 @@ public class OrderRetrievalTest {
         deleteTestUser();
     }
     
-    @Step("Delete test user")
+    @Step("Удаление тестового пользователя")
     private void deleteTestUser() {
         if (accessToken != null) {
-            given()
-                    .spec(ApiClient.getRequestSpecWithAuth(accessToken))
-                    .when()
-                    .delete("/auth/user")
-                    .then()
-                    .statusCode(anyOf(is(202), is(404)));
+            UserApi.deleteUser(accessToken).then()
+                   .statusCode(anyOf(is(SC_ACCEPTED), is(SC_NOT_FOUND)));
         }
     }
 }

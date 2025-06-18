@@ -1,12 +1,15 @@
 package com.stellarburgers;
 
-import com.stellarburgers.client.ApiClient;
+import com.stellarburgers.api.OrderApi;
+import com.stellarburgers.api.UserApi;
 import com.stellarburgers.models.Order;
 import com.stellarburgers.models.User;
 import com.stellarburgers.utils.TestDataGenerator;
+import io.qameta.allure.Description;
 import io.qameta.allure.Step;
 import io.qameta.allure.junit4.DisplayName;
 import io.restassured.response.Response;
+import org.apache.http.HttpStatus;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -14,15 +17,16 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Collections;
 
-import static io.restassured.RestAssured.given;
+import static org.apache.http.HttpStatus.*;
 import static org.hamcrest.Matchers.*;
 
 public class OrderCreationTest {
     
     private User testUser;
     private String accessToken;
-    private static final String VALID_INGREDIENT_1 = "60d3b41abdacab0026a733c6";
-    private static final String VALID_INGREDIENT_2 = "60d3b41abdacab0026a733c7";
+    private static final String VALID_INGREDIENT_1 = "61c0c5a71d1f82001bdaaa6c";
+    private static final String VALID_INGREDIENT_2 = "61c0c5a71d1f82001bdaaa6d";
+    
     private static final String INVALID_INGREDIENT = "invalid_hash";
     
     @Before
@@ -33,91 +37,91 @@ public class OrderCreationTest {
     
     @Test
     @DisplayName("Create order with authorization and valid ingredients")
+    @Description("Тест проверяет возможность успешного создания заказа авторизованным пользователем с использованием действительных идентификаторов ингредиентов")
     public void testCreateOrderWithAuthAndIngredients() {
         Order order = new Order(Arrays.asList(VALID_INGREDIENT_1, VALID_INGREDIENT_2));
         
-        Response response = createOrderWithAuth(order);
+        Response response = OrderApi.createOrder(order, accessToken);
         
         checkSuccessfulOrderCreation(response);
     }
     
     @Test
     @DisplayName("Create order without authorization")
+    @Description("Тест проверяет возможность создания заказа без авторизации с действительными ингредиентами")
     public void testCreateOrderWithoutAuth() {
         Order order = new Order(Arrays.asList(VALID_INGREDIENT_1, VALID_INGREDIENT_2));
         
-        Response response = createOrderWithoutAuth(order);
-        
+        Response response = OrderApi.createOrderWithoutAuth(order);
+
         checkSuccessfulOrderCreation(response);
     }
     
     @Test
     @DisplayName("Create order without ingredients")
+    @Description("Тест проверяет, что при попытке создания заказа без указания ингредиентов возвращается соответствующая ошибка")
     public void testCreateOrderWithoutIngredients() {
         Order order = new Order(Collections.emptyList());
         
-        Response response = createOrderWithAuth(order);
+        Response response = OrderApi.createOrder(order, accessToken);
         
         checkMissingIngredientsError(response);
     }
     
     @Test
     @DisplayName("Create order with invalid ingredient hash")
+    @Description("Тест проверяет, что при попытке создания заказа с недействительными идентификаторами ингредиентов возвращается ошибка")
     public void testCreateOrderWithInvalidIngredient() {
         Order order = new Order(Arrays.asList(INVALID_INGREDIENT));
         
-        Response response = createOrderWithAuth(order);
+        Response response = OrderApi.createOrder(order, accessToken);
         
         checkInvalidIngredientError(response);
     }
     
-    @Step("Create test user")
+    @Step("Создание тестового пользователя")
     private void createTestUser() {
-        Response response = ApiClient.getRequestSpec()
-                .body(testUser)
-                .when()
-                .post("/auth/register");
-        
+        Response response = UserApi.createUser(testUser);
         accessToken = response.jsonPath().getString("accessToken");
     }
     
-    @Step("Create order with authorization")
-    private Response createOrderWithAuth(Order order) {
-        return ApiClient.getRequestSpecWithAuth(accessToken)
-                .body(order)
-                .when()
-                .post("/orders");
-    }
-    
-    @Step("Create order without authorization")
-    private Response createOrderWithoutAuth(Order order) {
-        return ApiClient.getRequestSpec()
-                .body(order)
-                .when()
-                .post("/orders");
-    }
-    
-    @Step("Check successful order creation")
+    @Step("Проверка успешного создания заказа")
     private void checkSuccessfulOrderCreation(Response response) {
         response.then()
-                .statusCode(200)
+                .statusCode(SC_OK)
                 .body("success", equalTo(true))
                 .body("name", notNullValue())
                 .body("order.number", notNullValue());
     }
     
-    @Step("Check missing ingredients error")
+    @Step("Проверка ошибки отсутствия ингредиентов")
     private void checkMissingIngredientsError(Response response) {
         response.then()
-                .statusCode(400)
+                .statusCode(SC_BAD_REQUEST)
                 .body("success", equalTo(false))
                 .body("message", equalTo("Ingredient ids must be provided"));
     }
     
-    @Step("Check invalid ingredient error")
+    @Step("Проверка ошибки недействительного ингредиента")
     private void checkInvalidIngredientError(Response response) {
         response.then()
-                .statusCode(500);
+                .statusCode(SC_BAD_REQUEST)
+                .body("success", equalTo(false));
+    }
+    
+    @Step("Проверка ошибки некорректного запроса")
+    private void checkBadRequestError(Response response) {
+        response.then()
+                .statusCode(SC_BAD_REQUEST)
+                .body("success", equalTo(false));
+    }
+    
+    @Step("Проверка ошибки неавторизованного доступа")
+    private void checkUnauthorizedError(Response response) {
+        response.then()
+                .statusCode(SC_UNAUTHORIZED)
+                .body("success", equalTo(false))
+                .body("message", equalTo("You should be authorised"));
     }
     
     @After
@@ -125,15 +129,11 @@ public class OrderCreationTest {
         deleteTestUser();
     }
     
-    @Step("Delete test user")
+    @Step("Удаление тестового пользователя")
     private void deleteTestUser() {
         if (accessToken != null) {
-            given()
-                    .spec(ApiClient.getRequestSpecWithAuth(accessToken))
-                    .when()
-                    .delete("/auth/user")
-                    .then()
-                    .statusCode(anyOf(is(202), is(404)));
+            UserApi.deleteUser(accessToken).then()
+                   .statusCode(anyOf(is(SC_ACCEPTED), is(SC_NOT_FOUND)));
         }
     }
 }

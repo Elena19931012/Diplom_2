@@ -1,30 +1,29 @@
 package com.stellarburgers.utils;
 
 import com.stellarburgers.models.User;
-import java.util.Random;
+import net.datafaker.Faker;
 
 public class TestDataGenerator {
     
-    private static final Random random = new Random();
+    private static final Faker faker = new Faker();
     
     public static User generateUniqueUser() {
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        String email = "test" + timestamp + "@test.com";
-        String password = "password123";
-        String name = "TestUser" + timestamp;
+        String email = faker.internet().safeEmailAddress();
+        String password = faker.internet().password(8, 12);
+        String name = faker.name().fullName();
         
         return new User(email, password, name);
     }
     
     public static User generateUserWithMissingEmail() {
-        return new User(null, "password123", "TestUser");
+        return new User(null, faker.internet().password(8, 12), faker.name().fullName());
     }
     
     public static User generateUserWithMissingPassword() {
-        return new User("test@test.com", null, "TestUser");
+        return new User(faker.internet().safeEmailAddress(), null, faker.name().fullName());
     }
     
     public static User generateUserWithMissingName() {
-        return new User("test@test.com", "password123", null);
+        return new User(faker.internet().safeEmailAddress(), faker.internet().password(8, 12), null);
     }
 }

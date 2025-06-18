@@ -1,8 +1,9 @@
 package com.stellarburgers;
 
-import com.stellarburgers.client.ApiClient;
+import com.stellarburgers.api.UserApi;
 import com.stellarburgers.models.User;
 import com.stellarburgers.utils.TestDataGenerator;
+import io.qameta.allure.Description;
 import io.qameta.allure.Step;
 import io.qameta.allure.junit4.DisplayName;
 import io.restassured.response.Response;
@@ -10,7 +11,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static io.restassured.RestAssured.given;
+import static org.apache.http.HttpStatus.*;
 import static org.hamcrest.Matchers.*;
 
 public class UserLoginTest {
@@ -26,56 +27,47 @@ public class UserLoginTest {
     
     @Test
     @DisplayName("Login with valid credentials")
+    @Description("Тест проверяет, что пользователь может успешно войти в систему с корректными учетными данными и получить правильные токены аутентификации")
     public void testLoginWithValidCredentials() {
         User loginUser = new User(testUser.getEmail(), testUser.getPassword(), null);
         
-        Response response = loginUser(loginUser);
+        Response response = UserApi.loginUser(loginUser);
         
         checkSuccessfulLogin(response);
     }
     
     @Test
     @DisplayName("Login with invalid email")
+    @Description("Тест проверяет, что попытка входа с неправильным адресом электронной почты возвращает соответствующую ошибку аутентификации")
     public void testLoginWithInvalidEmail() {
         User loginUser = new User("invalid@test.com", testUser.getPassword(), null);
         
-        Response response = loginUser(loginUser);
+        Response response = UserApi.loginUser(loginUser);
         
         checkInvalidCredentialsError(response);
     }
     
     @Test
     @DisplayName("Login with invalid password")
+    @Description("Тест проверяет, что попытка входа с неправильным паролем возвращает соответствующую ошибку аутентификации")
     public void testLoginWithInvalidPassword() {
         User loginUser = new User(testUser.getEmail(), "wrongpassword", null);
         
-        Response response = loginUser(loginUser);
+        Response response = UserApi.loginUser(loginUser);
         
         checkInvalidCredentialsError(response);
     }
     
-    @Step("Create test user")
+    @Step("Создание тестового пользователя")
     private void createTestUser() {
-        Response response = ApiClient.getRequestSpec()
-                .body(testUser)
-                .when()
-                .post("/auth/register");
-        
+        Response response = UserApi.createUser(testUser);
         accessToken = response.jsonPath().getString("accessToken");
     }
     
-    @Step("Login user")
-    private Response loginUser(User user) {
-        return ApiClient.getRequestSpec()
-                .body(user)
-                .when()
-                .post("/auth/login");
-    }
-    
-    @Step("Check successful login")
+    @Step("Проверка успешного входа")
     private void checkSuccessfulLogin(Response response) {
         response.then()
-                .statusCode(200)
+                .statusCode(SC_OK)
                 .body("success", equalTo(true))
                 .body("accessToken", notNullValue())
                 .body("refreshToken", notNullValue())
@@ -83,10 +75,10 @@ public class UserLoginTest {
                 .body("user.name", equalTo(testUser.getName()));
     }
     
-    @Step("Check invalid credentials error")
+    @Step("Проверка ошибки неверных учетных данных")
     private void checkInvalidCredentialsError(Response response) {
         response.then()
-                .statusCode(401)
+                .statusCode(SC_UNAUTHORIZED)
                 .body("success", equalTo(false))
                 .body("message", equalTo("email or password are incorrect"));
     }
@@ -96,15 +88,11 @@ public class UserLoginTest {
         deleteTestUser();
     }
     
-    @Step("Delete test user")
+    @Step("Удаление тестового пользователя")
     private void deleteTestUser() {
         if (accessToken != null) {
-            given()
-                    .spec(ApiClient.getRequestSpecWithAuth(accessToken))
-                    .when()
-                    .delete("/auth/user")
-                    .then()
-                    .statusCode(anyOf(is(202), is(404)));
+            UserApi.deleteUser(accessToken).then()
+                   .statusCode(anyOf(is(SC_ACCEPTED), is(SC_NOT_FOUND)));
         }
     }
 }

@@ -1,8 +1,9 @@
 package com.stellarburgers;
 
-import com.stellarburgers.client.ApiClient;
+import com.stellarburgers.api.UserApi;
 import com.stellarburgers.models.User;
 import com.stellarburgers.utils.TestDataGenerator;
+import io.qameta.allure.Description;
 import io.qameta.allure.Step;
 import io.qameta.allure.junit4.DisplayName;
 import io.restassured.response.Response;
@@ -10,7 +11,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static io.restassured.RestAssured.given;
+import static org.apache.http.HttpStatus.*;
 import static org.hamcrest.Matchers.*;
 
 public class UserUpdateTest {
@@ -26,87 +27,86 @@ public class UserUpdateTest {
     
     @Test
     @DisplayName("Update user email with authorization")
+    @Description("Тест проверяет, что авторизованный пользователь может успешно обновить свой адрес электронной почты, и что изменения правильно сохраняются в системе")
     public void testUpdateEmailWithAuth() {
         String newEmail = "new" + System.currentTimeMillis() + "@test.com";
         User updateUser = new User(newEmail, null, null);
         
-        Response response = updateUserWithAuth(updateUser);
+        Response response = UserApi.updateUser(updateUser, accessToken);
         
-        checkSuccessfulUpdate(response, newEmail, testUser.getName());
+        checkSuccessfulEmailUpdate(response, newEmail);
     }
     
     @Test
     @DisplayName("Update user name with authorization")
+    @Description("Тест проверяет, что авторизованный пользователь может успешно обновить своё имя, и что изменения правильно сохраняются в системе")
     public void testUpdateNameWithAuth() {
         String newName = "NewName" + System.currentTimeMillis();
-        User updateUser = new User(null, null, newName);
+        User updateUser = new User(testUser.getEmail(), null, newName);
         
-        Response response = updateUserWithAuth(updateUser);
+        Response response = UserApi.updateUser(updateUser, accessToken);
         
         checkSuccessfulUpdate(response, testUser.getEmail(), newName);
     }
     
     @Test
     @DisplayName("Update user password with authorization")
+    @Description("Тест проверяет, что авторизованный пользователь может успешно обновить свой пароль, и что изменения правильно сохраняются в системе")
     public void testUpdatePasswordWithAuth() {
         String newPassword = "newpassword123";
-        User updateUser = new User(null, newPassword, null);
+        User updateUser = new User(testUser.getEmail(), newPassword, testUser.getName());
         
-        Response response = updateUserWithAuth(updateUser);
+        Response response = UserApi.updateUser(updateUser, accessToken);
         
         checkSuccessfulUpdate(response, testUser.getEmail(), testUser.getName());
     }
     
     @Test
     @DisplayName("Update user without authorization")
+    @Description("Тест проверяет, что попытка обновить информацию пользователя без надлежащей авторизации приводит к соответствующей ошибке")
     public void testUpdateUserWithoutAuth() {
         String newName = "NewName" + System.currentTimeMillis();
         User updateUser = new User(null, null, newName);
         
-        Response response = updateUserWithoutAuth(updateUser);
+        Response response = UserApi.updateUserWithoutAuth(updateUser);
         
         checkUnauthorizedError(response);
     }
     
-    @Step("Create test user")
+    @Step("Создание тестового пользователя")
     private void createTestUser() {
-        Response response = ApiClient.getRequestSpec()
-                .body(testUser)
-                .when()
-                .post("/auth/register");
-        
+        Response response = UserApi.createUser(testUser);
         accessToken = response.jsonPath().getString("accessToken");
     }
     
-    @Step("Update user with authorization")
-    private Response updateUserWithAuth(User user) {
-        return ApiClient.getRequestSpecWithAuth(accessToken)
-                .body(user)
-                .when()
-                .patch("/auth/user");
+    @Step("Проверка успешного обновления электронной почты")
+    private void checkSuccessfulEmailUpdate(Response response, String expectedEmail) {
+        response.then()
+                .statusCode(SC_OK)
+                .body("success", equalTo(true))
+                .body("user.email", equalTo(expectedEmail));
     }
     
-    @Step("Update user without authorization")
-    private Response updateUserWithoutAuth(User user) {
-        return ApiClient.getRequestSpec()
-                .body(user)
-                .when()
-                .patch("/auth/user");
+    @Step("Проверка ошибки доступа")
+    private void checkPermissionError(Response response) {
+        response.then()
+                .statusCode(SC_FORBIDDEN)
+                .body("success", equalTo(false));
     }
     
-    @Step("Check successful update")
+    @Step("Проверка успешного обновления")
     private void checkSuccessfulUpdate(Response response, String expectedEmail, String expectedName) {
         response.then()
-                .statusCode(200)
+                .statusCode(SC_OK)
                 .body("success", equalTo(true))
                 .body("user.email", equalTo(expectedEmail))
                 .body("user.name", equalTo(expectedName));
     }
     
-    @Step("Check unauthorized error")
+    @Step("Проверка ошибки неавторизованного доступа")
     private void checkUnauthorizedError(Response response) {
         response.then()
-                .statusCode(401)
+                .statusCode(SC_UNAUTHORIZED)
                 .body("success", equalTo(false))
                 .body("message", equalTo("You should be authorised"));
     }
@@ -116,15 +116,11 @@ public class UserUpdateTest {
         deleteTestUser();
     }
     
-    @Step("Delete test user")
+    @Step("Удаление тестового пользователя")
     private void deleteTestUser() {
         if (accessToken != null) {
-            given()
-                    .spec(ApiClient.getRequestSpecWithAuth(accessToken))
-                    .when()
-                    .delete("/auth/user")
-                    .then()
-                    .statusCode(anyOf(is(202), is(404)));
+            UserApi.deleteUser(accessToken).then()
+                   .statusCode(anyOf(is(SC_ACCEPTED), is(SC_NOT_FOUND)));
         }
     }
 }
