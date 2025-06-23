@@ -14,12 +14,6 @@ public class UserApi {
     
     @Step("Регистрация нового пользователя")
     public static Response createUser(User user) {
-        // Log the request details to Allure
-        Allure.addAttachment("Request Body", "application/json", 
-                "{ \"email\": \"" + user.getEmail() + 
-                "\", \"password\": \"" + user.getPassword() + 
-                "\", \"name\": \"" + user.getName() + "\" }", ".json");
-        
         Response response = ApiClient.getRequestSpec()
                 .body(user)
                 .when()
@@ -41,12 +35,6 @@ public class UserApi {
     
     @Step("Обновление пользователя с авторизацией")
     public static Response updateUser(User user, String accessToken) {
-        // Log the request details to Allure
-        Allure.addAttachment("Update Request", "application/json", 
-                "{ \"email\": \"" + user.getEmail() + 
-                "\", \"password\": \"" + user.getPassword() + 
-                "\", \"name\": \"" + user.getName() + "\" }", ".json");
-        
         Response response = ApiClient.getRequestSpecWithAuth(accessToken)
                 .body(user)
                 .when()
